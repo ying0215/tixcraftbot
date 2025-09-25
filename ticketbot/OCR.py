@@ -1,6 +1,6 @@
 import easyocr
 import cv2
-
+#test git.......
 # 初始化 OCR 辨識器，只載入一次避免重複耗時
 _reader_cache = {}
 
