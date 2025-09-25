@@ -13,14 +13,15 @@ tixcraft_bot.py
 2. 調整設定參數
 3. 執行腳本
 
+2025/09/29 (一) 12:00 ~ 23:59 測試這個網頁
+https://tixcraft.com/activity/detail/26_1rtp
+
 python -m ticketbot.main
 """
 
 import os
-import shutil
 import pickle
 import time
-from io import BytesIO
 from urllib.parse import urljoin
 from pathlib import Path
 
