@@ -12,6 +12,8 @@ tixcraft_bot.py
 1. 確保已安裝所需套件
 2. 調整設定參數
 3. 執行腳本
+
+python -m ticketbot.main
 """
 
 import os
@@ -30,7 +32,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
 # 匯入新的 OCR 模組
-from ORC import ocr_image
+from .OCR import ocr_image
 
 # ========== 設定參數 ==========
 COOKIES_FILE = "tixcraft_cookies.pkl"
