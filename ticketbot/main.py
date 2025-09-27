@@ -16,7 +16,7 @@ tixcraft_bot.py
 2025/09/29 (一) 12:00 ~ 23:59 測試這個網頁
 https://tixcraft.com/activity/detail/26_1rtp
 
-python -m ticketbot.main
+python -m ticketbot.test1
 """
 
 import os
@@ -38,9 +38,9 @@ from .OCR import ocr_image
 # ========== 設定參數 ==========
 COOKIES_FILE = "tixcraft_cookies.pkl"
 # 修正：使用選場次的網址
-GAME_URL = "https://tixcraft.com/activity/game/25_jiajia"
-TARGET_DATE = "2025/09/27 (六) 19:00"
-TARGET_TEXT = "家家 月部落 Fly to the moon 你給我的月不落現場"
+GAME_URL = "https://tixcraft.com/activity/detail/25_ksmasters"
+TARGET_DATE = "2025/09/27 (六) 12:00"
+TARGET_TEXT = "2025高雄羽球大師賽【9/27單日票】"
 TICKET_VALUE = "2"
 
 # OCR 設定
@@ -225,67 +225,100 @@ class TixcraftBot:
         except Exception as e:
             print(f"❌ 填入驗證碼失敗: {e}")
             return False
-        
+
+    def start_buy(self):
+        """直接跳轉到立即購票的網址"""
+        try:
+            # 先找到按鈕的 <a> 標籤
+            buy_link = self.driver.find_element("css selector", "li.buy a")
+            url = buy_link.get_attribute("href")
+            
+            # 直接跳過去
+            self.driver.get(url)
+            return True
+        except Exception as e:
+            print(f"❌ 立即購票失敗: {e}")
+            return False
+
+
     def select_match_and_buy(self):
         """選擇目標場次並直接跳轉到購票頁面"""
         try:
             # 等待頁面載入
-            time.sleep(3)
-            
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#gameList table"))
+            )
+
             print(f"🔍 搜尋目標場次: {TARGET_DATE}")
             print(f"🔍 搜尋目標活動: {TARGET_TEXT}")
-            
-            # 根據網頁原始碼，按鈕在 data-key="19960" 的 tr 中
-            # 先嘗試直接點擊按鈕
-            try:
-                # 等待表格載入
-                WebDriverWait(self.driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#gameList table"))
-                )
-                
-                # 找到包含目標日期的按鈕
-                buy_button = WebDriverWait(self.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button[data-href*='ticket/area']"))
-                )
-                
-                # 取得購票網址
-                ticket_url = buy_button.get_attribute("data-href")
-                print(f"✅ 找到購票網址: {ticket_url}")
-                
-                # 直接跳轉到購票頁面
-                self.driver.get(ticket_url)
-                print(f"✅ 已跳轉到購票頁面")
-                
-                return True
-                
-            except Exception as e1:
-                print(f"⚠️ CSS選擇器方法失敗: {e1}")
-                
-                # 備用方法：使用 JavaScript 點擊
-                try:
-                    # 找到所有購票按鈕
-                    buttons = self.driver.find_elements(By.CSS_SELECTOR, "button.btn-primary")
-                    
-                    for button in buttons:
-                        if button.get_attribute("data-href") and "ticket/area" in button.get_attribute("data-href"):
-                            ticket_url = button.get_attribute("data-href")
-                            print(f"✅ 備用方法找到購票網址: {ticket_url}")
-                            
-                            # 使用 JavaScript 點擊或直接跳轉
-                            self.driver.get(ticket_url)
-                            print(f"✅ 已跳轉到購票頁面")
-                            return True
-                    
-                    print("❌ 未找到任何購票按鈕")
-                    return False
-                    
-                except Exception as e2:
-                    print(f"❌ 備用方法也失敗: {e2}")
-                    return False
-            
+
+            # 找到所有購票按鈕
+            buttons = self.driver.find_elements(By.CSS_SELECTOR, "button[data-href*='ticket/area']")
+
+            for button in buttons:
+                ticket_url = button.get_attribute("data-href")
+                if ticket_url:
+                    print(f"✅ 找到購票網址: {ticket_url}")
+
+                    # 直接跳轉到購票頁面
+                    self.driver.get(ticket_url)
+                    print("✅ 已跳轉到購票頁面")
+                    return True
+
+            print("❌ 未找到任何購票按鈕")
+            return False
+
         except Exception as e:
             print(f"❌ 選擇場次失敗: {e}")
             return False
+
+    def select_area(self):
+        """依序嘗試不同區域，直到找到可購票的為止"""
+        try:
+            # 等待區域列表載入
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".zone.area-list li a"))
+            )
+            
+            # 抓出所有區域 a tag
+            area_links = self.driver.find_elements(By.CSS_SELECTOR, ".zone.area-list li a")
+
+            for link in area_links:
+                area_id = link.get_attribute("id")
+                area_name = link.text.strip()
+                print(f"🔍 嘗試區域: {area_name} ({area_id})")
+
+                # 用 JS 直接取 areaUrlList[area_id]
+                ticket_url = self.driver.execute_script(
+                    "return areaUrlList[arguments[0]];", area_id
+                )
+
+                if not ticket_url:
+                    print(f"⚠️ 找不到 {area_name} 的網址，跳過")
+                    continue
+
+                print(f"✅ 取得購票網址: {ticket_url}")
+                self.driver.get(ticket_url)
+
+                # 這裡你可以判斷頁面是否有「已售完」提示
+                try:
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, ".sold-out, .error-message"))
+                    )
+                    print(f"❌ {area_name} 已售完，嘗試下一個")
+                    self.driver.back()
+                    continue
+                except:
+                    print(f"🎉 成功進入 {area_name} 購票頁！")
+                    return True
+
+            print("❌ 所有區域都已售完")
+            return False
+
+        except Exception as e:
+            print(f"❌ 選擇區域失敗: {e}")
+            return False
+
 
     def select_tickets(self):
         """選擇票種和數量"""
@@ -346,15 +379,22 @@ class TixcraftBot:
                 self.save_cookies()
             
             # 等待用戶確認頁面狀態
-            input("👉 如需要請先完成其他準備工作，完成後按 Enter 開始購票流程...")
+            #input("👉 如需要請先完成其他準備工作，完成後按 Enter 開始購票流程...")
             
             # 購票流程
             print("\n🎫 開始購票流程...")
             
             # 1. 選擇場次並跳轉到購票頁面
+            if not self.start_buy():
+                return
+
+            # 1. 選擇場次並跳轉到購票頁面
             if not self.select_match_and_buy():
                 return
             
+            if not self.select_area():
+                return
+
             # 2. 選擇票種
             if not self.select_tickets():
                 return
