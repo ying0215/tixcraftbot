@@ -2,6 +2,8 @@
 1.設定初始網址
 2.執行後 手動到需要的網頁
 3.回到終端機案 Enter
+4.請AI分離 js html css
+    幫我把程式碼中的 js,html,css 分離出來，並且拆成3個檔案
 """
 
 from selenium import webdriver
@@ -12,7 +14,7 @@ import os
 
 # --- 設定變數 ---
 # ⚠️ 請將這個 URL 替換為您需要開始操作的網址 (例如：反機器人頁面或登入頁)
-INITIAL_URL = "https://tixcraft.com/activity/detail/25_ksmasters" 
+INITIAL_URL = "https://tixcraft.com/ticket/ticket/26_energy/20272/4/25" 
 
 # --- 啟動瀏覽器 ---
 try:

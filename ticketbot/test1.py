@@ -19,6 +19,7 @@ https://tixcraft.com/activity/detail/26_1rtp
 python -m ticketbot.test1
 """
 
+import re
 import os
 import pickle
 import time
@@ -31,6 +32,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoAlertPresentException, TimeoutException
+
 
 # 匯入新的 OCR 模組
 from .OCR import ocr_image
@@ -38,10 +41,10 @@ from .OCR import ocr_image
 # ========== 設定參數 ==========
 COOKIES_FILE = "tixcraft_cookies.pkl"
 # 修正：使用選場次的網址
-GAME_URL = "https://tixcraft.com/activity/game/25_jiajia"
-TARGET_DATE = "2025/09/27 (六)"
-TARGET_TEXT = "家家 月部落 Fly to the moon 你給我的月不落現場"
-TICKET_VALUE = "2"
+GAME_URL = "https://tixcraft.com/activity/detail/25_key"
+TARGET_DATE = "2025/10/04 (六) 19:00"
+TARGET_TEXT = "2025 KEYLAND：Uncanny Valley in TAIPEI"
+TICKET_VALUE = "3"
 
 # OCR 設定
 MAX_OCR_RETRY = 5
@@ -226,49 +229,230 @@ class TixcraftBot:
             print(f"❌ 填入驗證碼失敗: {e}")
             return False
 
-    def select_date(self):
-        """選擇票種和數量"""
+    def start_buy(self):
+        """直接跳轉到立即購票的網址"""
         try:
-            # 選擇成人票數量
-            select_elem = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "dateSearchGameList"))
+            # 等待 <li class="buy a"> 出現
+            buy_link = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "li.buy a"))
             )
-            select = Select(select_elem)
-            select.select_by_value(TARGET_DATE)
-            print(f"✅ 已選擇 {TARGET_DATE} ")
+            url = buy_link.get_attribute("href")
+
+            # 補上完整 domain
+            if url.startswith("/"):
+                url = "https://tixcraft.com" + url
+
+            # 跳轉
+            self.driver.get(url)
             return True
-            
+
         except Exception as e:
-            print(f"❌ 選擇票種失敗: {e}")
+            print(f"❌ 立即購票失敗: {e}")
             return False
 
-    def click_match(self):
-        """提交購票請求"""
+
+    def select_match_and_buy(self):
+        """選擇目標場次並直接跳轉到購票頁面"""
         try:
-            next_btn = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'立即訂購')]"))
+            # 等待頁面載入
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#gameList table"))
             )
-            next_btn.click()
-            print("✅ 已提交購票請求")
-            return True
+
+            print(f"🔍 搜尋目標場次: {TARGET_DATE}")
+            print(f"🔍 搜尋目標活動: {TARGET_TEXT}")
+
+            # 找到所有購票按鈕
+            buttons = self.driver.find_elements(By.CSS_SELECTOR, "button[data-href*='ticket/area']")
+
+            for button in buttons:
+                ticket_url = button.get_attribute("data-href")
+                if ticket_url:
+                    print(f"✅ 找到購票網址: {ticket_url}")
+
+                    # 直接跳轉到購票頁面
+                    self.driver.get(ticket_url)
+                    print("✅ 已跳轉到購票頁面")
+                    return True
+
+            print("❌ 未找到任何購票按鈕")
+            return False
+
         except Exception as e:
-            print(f"⚠️ 提交購票失敗: {e}")
-            return False        
+            print(f"❌ 選擇場次失敗: {e}")
+            return False
+
+    
+    def select_area(self):
+        """依序嘗試不同區域，直到找到可購票的為止"""
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, ".zone.area-list"))
+            )
+
+            # 確保選擇「電腦配位」模式（如果有）
+            try:
+                auto_radio = self.driver.find_element(By.ID, "select_form_auto")
+                if not auto_radio.is_selected():
+                    auto_radio.click()
+                    print("✅ 已切換至電腦配位模式")
+            except Exception as e:
+                print(f"⚠️ 無法切換配位模式: {e}")
+
+            # 取得所有可購票區域
+            available_areas = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                ".zone.area-list li.select_form_a a, .zone.area-list li.select_form_b a"
+            )
+
+            if not available_areas:
+                print("❌ 沒有找到任何可購票的區域")
+                return False
+
+            print(f"🔍 找到 {len(available_areas)} 個可購票區域")
+
+            min_ticket = int(TICKET_VALUE)
+
+            for area in available_areas:
+                try:
+                    area_id = area.get_attribute("id")
+                    area_name = area.text.strip()
+                    print(f"🎯 嘗試區域: {area_name} ({area_id})")
+
+                    # ---------- 新增判斷 ----------
+                    if "已售完" in area_name:
+                        print(f"⛔ {area_name} 已售完，跳過")
+                        continue
+
+                    elif "剩餘" in area_name:
+                        match = re.search(r"剩餘\s*(\d+)", area_name)
+                        if match:
+                            remain = int(match.group(1))
+                            if remain < min_ticket:
+                                print(f"⚠️ {area_name} 剩餘 {remain}，不足 {min_ticket} 張，跳過")
+                                continue
+                            else:
+                                print(f"✅ {area_name} 剩餘 {remain}，符合需求，嘗試進入")
+
+                    elif "熱賣中" in area_name:
+                        print(f"🔥 {area_name} 顯示熱賣中，數量未知，嘗試進入")
+
+                    else:
+                        print(f"❓ {area_name} 格式不明，跳過")
+                        continue
+                    # ----------------------------
+
+                    # 使用JavaScript獲取對應購票網址
+                    ticket_url = self.driver.execute_script(
+                        "return typeof areaUrlList !== 'undefined' && areaUrlList[arguments[0]] ? areaUrlList[arguments[0]] : null;", 
+                        area_id
+                    )
+
+                    if not ticket_url:
+                        print(f"⚠️ 找不到 {area_name} 的購票網址，直接點擊")
+                        self.driver.execute_script("arguments[0].click();", area)
+                    else:
+                        print(f"✅ 取得購票網址: {ticket_url}")
+                        self.driver.get(ticket_url)
+
+                    # 等待頁面載入
+                    time.sleep(2)
+
+                    try:
+                        WebDriverWait(self.driver, 10).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "img[src*='captcha'], #TicketForm_verifyCode-image"))
+                        )
+                        print(f"🎉 成功進入 {area_name} 購票頁面！")
+                        return True
+                    except:
+                        if self.driver.find_elements(By.CSS_SELECTOR, ".zone.area-list"):
+                            print(f"❌ {area_name} 已售完，自動跳回選區頁面")
+                            continue
+
+                        error_elements = self.driver.find_elements(By.CSS_SELECTOR, ".alert-danger, .error-message, .fcRed")
+                        if error_elements:
+                            error_text = error_elements[0].text.strip()
+                            print(f"❌ 購票失敗: {error_text}")
+                            self.driver.back()
+                            time.sleep(1)
+                            continue
+
+                        print(f"❌ {area_name} 購票頁面載入異常，嘗試下一個區域")
+                        self.driver.back()
+                        time.sleep(1)
+                        continue
+
+                except Exception as area_error:
+                    print(f"❌ 處理區域 {area_name if 'area_name' in locals() else '未知'} 時發生錯誤: {area_error}")
+                    try:
+                        self.driver.back()
+                        time.sleep(1)
+                    except:
+                        pass
+                    continue
+
+            print("❌ 所有可購票區域都已嘗試完畢，均無法成功購票")
+            return False
+
+        except Exception as e:
+            print(f"❌ 選擇區域過程發生嚴重錯誤: {e}")
+            return False
+
 
     def select_tickets(self):
-        """選擇票種和數量"""
+        """通用票種和數量選擇函數 - 支援動態票種ID"""
         try:
-            # 等待票種頁面載入
-            time.sleep(3)
+                    
+            # 等待票種列表出現
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, "ticketPriceList"))
+            )
+            print("✅ 票種列表已載入")
             
-            # 選擇成人票數量
-            select_elem = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "TicketForm_ticketPrice_09"))
+            # 查找所有票種選擇器（使用CSS選擇器匹配ID模式）
+            ticket_selects = self.driver.find_elements(
+                By.CSS_SELECTOR, 
+                "select[id^='TicketForm_ticketPrice_']"
             )
             
-            select = Select(select_elem)
-            select.select_by_value(TICKET_VALUE)
-            print(f"✅ 已選擇 {TICKET_VALUE} 張成人票")
+            if not ticket_selects:
+                raise Exception("❌ 找不到任何票種選擇器")
+            
+            print(f"📋 找到 {len(ticket_selects)} 個票種選項")
+            
+            # 選擇第一個票種
+            first_ticket = ticket_selects[0]
+            ticket_id = first_ticket.get_attribute("id")
+            print(f"🎫 選擇第一個票種 (ID: {ticket_id})")
+            
+            # 使用 Select 類別操作下拉選單
+            select = Select(first_ticket)
+            
+            # 獲取所有可選數量選項
+            available_options = [option.get_attribute("value") for option in select.options]
+            print(f"📊 可選數量: {', '.join(available_options)}")
+            
+            # 智能選擇數量
+            if TICKET_VALUE in available_options:
+                # 情況1: 想要的數量可用
+                select.select_by_value(TICKET_VALUE)
+                print(f"✅ 已選擇 {TICKET_VALUE} 張票")
+            else:
+                # 情況2: 想要的數量不可用，選擇最大值
+                # 過濾掉 "0"，找出最大值
+                numeric_options = [int(opt) for opt in available_options if opt.isdigit()]
+                max_available = max(numeric_options) if numeric_options else 0
+                
+                if max_available > 0:
+                    select.select_by_value(str(max_available))
+                    print(f"⚠️  想要 {TICKET_VALUE} 張但不可用，已自動選擇最大值: {max_available} 張")
+                else:
+                    print("⚠️  警告: 該票種目前無可選數量（僅0可選）")
+                    select.select_by_value("0")
+            
+            # 驗證選擇結果
+            selected_value = select.first_selected_option.get_attribute("value")
+            print(f"🎉 最終選擇數量: {selected_value} 張")
             
             # 勾選同意條款
             try:
@@ -286,18 +470,61 @@ class TixcraftBot:
             return False
     
     def submit_booking(self):
-        """提交購票請求"""
+        """提交購票請求 (使用 JavaScript 強制點擊)"""
+        btn_xpath = "//button[contains(text(),'確認張數') and @type='submit']"
         try:
+            # 1. 等待元素載入到 DOM
             next_btn = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(),'確認張數')]"))
+                EC.presence_of_element_located((By.XPATH, btn_xpath))
             )
-            next_btn.click()
-            print("✅ 已提交購票請求")
+            
+            # 2. 使用 JavaScript 點擊 (繞過畫面遮擋檢查)
+            self.driver.execute_script("arguments[0].click();", next_btn)
+            
+            print("✅ 已提交購票請求 (JS 點擊)")
             return True
         except Exception as e:
             print(f"⚠️ 提交購票失敗: {e}")
             return False
     
+    def handle_captcha_error_alert(self):
+        """
+        處理驗證碼錯誤時彈出的瀏覽器原生警告視窗 (Alert)。
+        點擊「確定」按鈕來關閉視窗，使主網頁能夠繼續操作或刷新。
+        """
+        # 設置等待時間，因為警告視窗可能需要短暫時間才彈出
+        ALERT_WAIT_TIME = 3 
+        
+        try:
+            # 等待警告視窗出現
+            WebDriverWait(self.driver, ALERT_WAIT_TIME).until(
+                EC.alert_is_present(), 
+                "等待警告視窗超時。"
+            )
+            
+            # 切換到警告視窗
+            alert = self.driver.switch_to.alert
+            
+            # 獲取警告視窗的文字內容 (可選，用於確認是驗證碼錯誤)
+            alert_text = alert.text
+            print(f"⚠️ 偵測到警告視窗，內容: {alert_text}")
+            
+            # 點擊「確定」按鈕
+            alert.accept()
+            print("✅ 已點擊警告視窗的「確定」按鈕，釋放頁面鎖定。")
+            return True
+            
+        except TimeoutException:
+            # 如果在設定時間內沒有彈出警告視窗，表示可能成功進入下一步或沒有觸發錯誤
+            # 這是正常情況，可以繼續檢查下一頁
+            return False
+        except NoAlertPresentException:
+            # 雖然已經有 TimeoutException 處理了，但仍保留以防萬一
+            return False
+        except Exception as e:
+            print(f"❌ 處理警告視窗時發生意外錯誤: {e}")
+            return False
+
     def run(self):
         """執行完整的購票流程"""
         print("🤖 Tixcraft 購票機器人啟動")
@@ -313,40 +540,59 @@ class TixcraftBot:
                 input("👉 請手動登入，完成後按 Enter 繼續...")
                 self.save_cookies()
             
-            
+            # 等待用戶確認頁面狀態
+            #input("👉 如需要請先完成其他準備工作，完成後按 Enter 開始購票流程...")
             
             # 購票流程
             print("\n🎫 開始購票流程...")
+            
+            # 跳轉到購票頁面
+            if not self.start_buy():
+                return
 
-            #  選擇日期
-            if not self.select_date():
+            # 選擇場次並跳轉到購票頁面
+            if not self.select_match_and_buy():
                 return
             
-            # 等待用戶確認頁面狀態
-            input("👉 如需要請先完成其他準備工作，完成後按 Enter 開始購票流程...")
+            if not self.select_area():
+                return
 
-            # 1. 選擇場次並跳轉到購票頁面
-            if not self.click_match():
-                return
-            
-            # 2. 選擇票種
-            if not self.select_tickets():
-                return
-            
-            # 3. 解決驗證碼
-            success, captcha_text = self.solve_captcha()
-            if not success:
-                print("❌ 驗證碼辨識失敗，購票流程終止")
-                return
-            
-            # 4. 填入驗證碼
-            if not self.fill_captcha(captcha_text):
-                return
-            
-            # 5. 提交購票
-            if not self.submit_booking():
-                return
-            
+            MAX_RETRIES = 3 # 設定最大重試次數
+
+            for attempt in range(MAX_RETRIES):
+                print(f"\n--- 嘗試提交驗證碼 (第 {attempt + 1} 次) ---")
+                # 選擇票種
+                if not self.select_tickets():
+                    return
+                
+                # 解決驗證碼
+                success, captcha_text = self.solve_captcha()
+                if not success:
+                    print("❌ 驗證碼辨識失敗，購票流程終止")
+                    return
+                
+                # 填入驗證碼
+                if not self.fill_captcha(captcha_text):
+                    return
+                
+                # 提交購票
+                if not self.submit_booking():
+                    return
+                
+                is_alert_handled = self.handle_captcha_error_alert()
+                if is_alert_handled:
+                    # 如果出現警告視窗並點擊了「確定」，表示驗證碼**錯誤**，頁面將刷新。
+                    print("🔄 驗證碼錯誤。等待頁面刷新後，進入下一輪重試...")
+                    
+                    # 您需要在這裡加入等待頁面刷新或等待新的驗證碼元素出現的邏輯
+                    # self.wait_for_new_captcha_image()
+                else:
+                    # 如果沒有警告視窗彈出，則預設為成功進入下一頁
+                    print("🎉 未偵測到錯誤警告視窗，預設已成功進入下一步。")
+                    break
+                if attempt == MAX_RETRIES - 1:
+                    print("🛑 已達最大重試次數，終止程序。")
+
             print("🎉 購票流程完成！")
             
         except Exception as e:
