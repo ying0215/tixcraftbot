@@ -1,0 +1,10 @@
+requests==2.32.4
+selenium==4.34.2
+numpy==2.2.6
+easyocr==1.7.2
+python-bidi==0.6.6
+
+# PyTorch with CUDA 12.9
+#torch==2.8.0+cu129
+#torchvision==0.23.0+cu129
+#--extra-index-url https://download.pytorch.org/whl/cu129
