@@ -1,3 +1,12 @@
 # 忽略整個 my_photos 資料夾
-img_captcha/
-test_kit/
+test_data/
+deeplearling/
+JSbot/
+data/
+config/
+logs/
+.vscode/
+ticketbot/__pycache__/
+*.pyc
+tool/
+

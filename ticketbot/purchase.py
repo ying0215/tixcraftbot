@@ -5,7 +5,7 @@ purchase.py
 處理選場次、選區域、選票種、提交等核心流程
 """
 
-import logging
+
 import re
 import time
 from selenium.webdriver.common.by import By
@@ -13,8 +13,9 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoAlertPresentException, TimeoutException
 from . import config
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def select_match_and_buy(driver):
@@ -160,19 +161,16 @@ def select_area(driver):
                         error_text = error_elements[0].text.strip()
                         logger.error(f"❌ 購票失敗: {error_text}")
                         driver.back()
-                        time.sleep(1)
                         continue
 
                     logger.warning(f"❌ {area_name} 購票頁面載入異常，嘗試下一個區域")
                     driver.back()
-                    time.sleep(1)
                     continue
 
             except Exception as area_error:
                 logger.error(f"❌ 處理區域 {area_name if 'area_name' in locals() else '未知'} 時發生錯誤: {area_error}")
                 try:
                     driver.back()
-                    time.sleep(1)
                 except:
                     pass
                 continue
@@ -289,7 +287,6 @@ def submit_booking(driver):
         driver.execute_script("arguments[0].click();", next_btn)
         
         logger.info("✅ 已提交購票請求 (JS 點擊)")
-        time.sleep(1)  # 等待頁面反應
         return True
         
     except Exception as e:
@@ -326,7 +323,6 @@ def handle_captcha_error_alert(driver):
         # 點擊「確定」按鈕
         alert.accept()
         logger.info("✅ 已點擊警告視窗的「確定」按鈕，釋放頁面鎖定。")
-        time.sleep(1)  # 等待頁面刷新
         return True
         
     except TimeoutException:

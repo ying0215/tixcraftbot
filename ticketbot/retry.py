@@ -2,9 +2,9 @@
 import time
 import logging
 import functools
-import ticketbot.config2 as config2
+import ticketbot.config as config
 
-def retry(max_attempts=config2.RETRY_LIMIT, delay=config2.RETRY_INTERVAL, exceptions=(Exception,)):
+def retry(max_attempts=config.RETRY_LIMIT, delay=config.RETRY_INTERVAL, exceptions=(Exception,)):
     """
     裝飾器：自動重試指定次數
     參數：

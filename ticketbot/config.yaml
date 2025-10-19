@@ -1,0 +1,26 @@
+# 拓元購票機器人 - 使用者設定檔
+
+# ========== 網站設定 ==========
+# 目標活動的網址
+game_url: "https://tixcraft.com/activity/detail/25_yama"
+target_date: "2025/10/16 (四) 20:00"
+target_text: "yama Asia Tour 2025 虎視眈眈"
+
+# ========== 票種設定 ==========
+# 目標區域 (留空表示自動選擇)
+target_area: ""
+# 購買張數
+ticket_value: 2
+
+# ========== OCR 設定 ==========
+# OCR 最大重試次數
+max_ocr_retry: 5
+# OCR 辨識語言 (拓元通常是英文+數字)
+ocr_languages: ['en']
+
+# ========== 時間設定 ==========
+# 瀏覽器操作的短等待/長等待時間 (秒)
+short_wait: 1.0
+long_wait: 2.0
+# 提前登入等待的分鐘數
+prepare_minutes: 5

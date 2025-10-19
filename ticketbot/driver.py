@@ -5,12 +5,13 @@ driver.py
 設定並啟動 Chrome 瀏覽器
 """
 
-import logging
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from .logger import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def setup_driver(headless=False):
